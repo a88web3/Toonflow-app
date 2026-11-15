@@ -8,14 +8,14 @@
 
 | 阶段 | READY | IN_PROGRESS | BLOCKED | COMPLETED |
 | --- | ---: | ---: | ---: | ---: |
-| P0 | 3 | 0 | 0 | 0 |
-| P1 | 2 | 0 | 0 | 0 |
-| P2 | 0 | 0 | 4 | 0 |
-| P3 | 0 | 0 | 4 | 0 |
+| P0 | 3 | 0 | 1 | 0 |
+| P1 | 2 | 0 | 2 | 0 |
+| P2 | 0 | 0 | 7 | 0 |
+| P3 | 0 | 0 | 5 | 0 |
 | P4 | 0 | 0 | 3 | 0 |
 | P5 | 0 | 0 | 3 | 0 |
 | P6 | 0 | 0 | 2 | 0 |
-| **合计** | **5** | **0** | **16** | **0** |
+| **合计** | **5** | **0** | **23** | **0** |
 
 ## 通用施工规则
 
@@ -397,3 +397,133 @@
 
 - 当前结论：`NOT_READY_FOR_OPENCODE`。
 - 变更为 `READY_FOR_OPENCODE` 的最低条件：`P0-001`、`P0-002`、`P0-003`、`P1-001`、`P1-002` 全部为 `COMPLETED`，且每项有真实验收与 commit 证据；随后只能开始相应依赖已满足的一项 P2 任务。
+
+## 第二阶段追加：本地媒体研究与 60 秒 MVP
+
+> 依据 [LOCAL_AI_MEDIA_FEASIBILITY.md](docs/LOCAL_AI_MEDIA_FEASIBILITY.md) 追加。以下 7 项与既有 21 项不重复：它们只处理 Studio 资源隔离、基准、许可、sidecar 契约和单集 MVP 的决策前置。除明确写作的文档/接口任务外，均需人工批准维护窗口；不得自行下载权重、启动生成或改变 Qwen 服务。
+
+### P0-004 — Studio 媒体工作负载隔离与端口策略
+
+- 状态：`BLOCKED`
+- 所属模块：Local AI infrastructure
+- 优先级：P0 / 风险：Critical
+- 任务目标：将 Qwen :8000 与未来媒体 sidecar 的资源、端口、目录、访问控制、维护窗口和紧急停止策略形成可执行且可审计的运行契约。
+- 当前问题：统一内存平台上独立进程仍会争抢资源；现有 Qwen 是稳定生产基线，不能被媒体试验影响。
+- 涉及文件：新增 `docs/runbooks/*`、部署配置模板；不得修改 Studio LaunchDaemon、MLX 或 OpenCode 配置。
+- 实施范围：只写策略、健康检查和操作手册；不安装模型、不占用现有端口。
+- 前置依赖：无。
+- 人工决策：维护窗口、最大媒体并发、sidecar port 范围、失败时云端降级授权。
+- OpenCode 适配性：适合（仅文档/配置模板，执行前仍须人工审查）。
+- 验收标准：任何媒体 worker 默认无法与 Qwen 重负载并发；端口不冲突；急停不触及 Qwen；有明确责任人和回退步骤。
+- 必须执行的测试：桌面推演和只读端口/服务盘点；不得重启或压力测试 Qwen。
+- 交付物：资源隔离 runbook、端口登记、维护窗口 checklist。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：保持无媒体 sidecar 的当前稳定架构。
+
+### P1-003 — 本地图片/视频基准与验收协议
+
+- 状态：`BLOCKED`
+- 所属模块：Benchmark governance
+- 优先级：P1 / 风险：High
+- 任务目标：定义可重复的 Mac Studio M5 Max 64GB 基准协议，覆盖峰值内存、平均墙功率、冷/热耗时、成功率、取消/恢复、画质和 Qwen 不受影响证明。
+- 当前问题：不存在 Studio 上图片/视频的实测数据；不得用 NVIDIA、其他 Apple 芯片或宣传基准代替。
+- 涉及文件：新增 `docs/benchmarks/*`、临时测试素材清单；不写生产业务代码。
+- 实施范围：协议、记录模板和通过阈值；不下载模型/不执行基准。
+- 前置依赖：P0-004、P1-001。
+- 人工决策：可接受的内存/功耗阈值、维护窗口、测试预算、是否允许下载权重。
+- OpenCode 适配性：适合（文档与记录模板）；实际基准不适合自动执行。
+- 验收标准：协议能计算 5 秒镜头和 60 秒/12 镜头的真实吞吐；明确失败、停止和恢复规则；结果字段可写入成本/容量报告。
+- 必须执行的测试：文档评审；实际测量需另获批准。
+- 交付物：benchmark protocol、结果 CSV/JSON 模板、go/no-go 标准。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：不执行模型测试，保持 `UNVERIFIED`。
+
+### P1-004 — 本地模型与 LoRA 商业许可台账
+
+- 状态：`BLOCKED`
+- 所属模块：Legal / governance
+- 优先级：P1 / 风险：High
+- 任务目标：建立按权重、VAE、LoRA、ControlNet、节点、数据集和输出用途登记的许可证/版本/哈希/批准人台账。
+- 当前问题：FLUX、Qwen、LTX、Wan 与社区派生件许可不同；“模型代码开源”不等于可商业使用。
+- 涉及文件：新增 `docs/compliance/*`、P5-003 未来数据模型接口说明。
+- 实施范围：只建立台账模板和审批规则；不下载或分发权重。
+- 前置依赖：无。
+- 人工决策：法务接受的模型清单、收入门槛解释、输出版权/肖像/音乐政策。
+- OpenCode 适配性：部分适合（模板与来源采集）；最终许可结论必须人工/法务批准。
+- 验收标准：每个候选可得到 allow/research-only/reject 状态；无许可证/哈希的资产不得进入生产 workflow。
+- 必须执行的测试：台账抽样审查；不得将法律意见伪装为技术测试。
+- 交付物：许可台账、批准流程、来源链接清单。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：默认拒绝未登记模型与 LoRA。
+
+### P2-005 — 本地媒体 sidecar provider 契约
+
+- 状态：`BLOCKED`
+- 所属模块：Media integration
+- 优先级：P2 / 风险：High
+- 任务目标：在不改 Toonflow 核心媒体任务模型的前提下，定义 local image/video sidecar 的 submit/status/cancel/resume、进度、产物、错误和 secret 边界契约。
+- 当前问题：现有 `ProviderDefinition` 可复用 `generateImage`、`generateVideo`、`resumeTask`，但没有本地服务协议或 sidecar。
+- 涉及文件：`packages/providers/types.d.ts`、`apps/server/src/utils/media/*` 的接口阅读结果、新 provider 设计文档；实际 adapter 另开任务。
+- 实施范围：仅契约、mock-free API schema 和威胁模型；不启动 sidecar、不改业务代码。
+- 前置依赖：P0-002、P0-004、P1-002、P1-003。
+- 人工决策：认证方式、网络边界、支持的 remote cancel 语义、云端降级是否人工触发。
+- OpenCode 适配性：适合（文档/类型设计）；实现必须等待真实 sidecar 能力通过验收。
+- 验收标准：可映射到现有 task checkpoint；不会把 API key 写入 providerData；未知状态/重复回调/超时有明确语义。
+- 必须执行的测试：架构评审和静态契约校验；不得发起真实生成。
+- 交付物：OpenAPI/JSON schema、状态机、adapter 实施分解。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：继续使用现有云 provider，不改变核心任务代码。
+
+### P2-006 — 商用本地图片候选隔离验收
+
+- 状态：`BLOCKED`
+- 所属模块：Image generation
+- 优先级：P2 / 风险：High
+- 任务目标：按 P1-003 协议在独立维护窗口比较 FLUX.1 schnell、原版 Qwen-Image 与经批准 workflow 的角色/场景一致性、批量能力和 API 可用性。
+- 当前问题：没有 Studio 实测；Qwen-Image 2.1 和 FLUX dev 不可因技术表现进入商用路线。
+- 涉及文件：后续 isolate runtime、P2-002 ComfyUI provider、P1-004 许可台账、benchmark 记录；不修改当前 Qwen。
+- 实施范围：测试仅使用合成/无敏感素材、单任务、可清理临时目录。
+- 前置依赖：P0-004、P1-003、P1-004、P2-002；用户书面批准模型下载和维护窗口。
+- 人工决策：最终模型/LoRA/风格清单和是否接受本地维护成本。
+- OpenCode 适配性：不适合自动执行；可在人工完成实测后整理记录。
+- 验收标准：20 次图片任务有真实成功率/内存/耗时；输出带模型/LoRA/workflow/seed；角色一致性经人工打分并达成预设阈值。
+- 必须执行的测试：批准的隔离基准；不得与 Qwen 重负载并发。
+- 交付物：基准报告、许可证据、go/no-go 决定。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：卸载/隔离测试 runtime；保留只读测量记录，不影响 Qwen。
+
+### P2-007 — LTX/Wan 本地视频隔离验收与云端降级门
+
+- 状态：`BLOCKED`
+- 所属模块：Video generation
+- 优先级：P2 / 风险：Critical
+- 任务目标：先验证 LTX 2.5 Fast 的 Apple Silicon sidecar/API 可行性，再按相同协议决定是否试验 Wan2.2 TI2V-5B；定义超过时限/失败时人工批准的云视频降级门。
+- 当前问题：LTX 有官方 Mac 支持但仍 Beta；Wan2.2 官方有效证据主要为 CUDA；HunyuanVideo 1.5 官方不支持 Mac 路径。
+- 涉及文件：隔离测试 runtime、P2-005 contract、P2-003 云 provider capability contract、benchmark 文档。
+- 实施范围：不启动生产生成；绝不修改 MLX/Qwen；不得根据 NVIDIA 数据写入 Mac SLA。
+- 前置依赖：P0-004、P1-003、P1-004、P2-005、P2-003；用户批准下载、磁盘空间、维护窗口和可能的云测试预算。
+- 人工决策：5 秒镜头允许的最长时限、画质阈值、云端降级预算/审批人。
+- OpenCode 适配性：不适合自动执行真实模型；通过实测后适合实现已批准 adapter。
+- 验收标准：至少一个 5 秒 I2V 任务可 submit/status/cancel/resume；记录真实 M5 内存/功耗/耗时/失败率；Qwen 健康检查无退化；无达标数据则保持云端路径。
+- 必须执行的测试：批准的单并发、无敏感素材基准；Qwen 前后只读健康验证。
+- 交付物：视频基准报告、API 能力矩阵、云端降级 SOP、go/no-go 决定。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：停止媒体 sidecar、保留 Qwen 不变、所有视频任务改为人工批准云端提交。
+
+### P3-005 — 60 秒单集本地优先 MVP 施工蓝图
+
+- 状态：`BLOCKED`
+- 所属模块：Production pipeline
+- 优先级：P3 / 风险：High
+- 任务目标：把已批准的文本、角色/场景、12 镜头、图片、视频、TTS、字幕和 render manifest 组装为单集 60 秒的可审计 MVP，不扩展到多集批量。
+- 当前问题：当前 Toonflow 没有端到端短剧领域流程；单个 media task 不能替代项目级流水线。
+- 涉及文件：P3-001 至 P3-004 的新领域/API/worker；画布仅作为创作界面。
+- 实施范围：一个项目、12 镜头、720p/24fps、人工审批点；默认本地图片 + 经批准云视频，只有 P2-007 go 时才允许本地视频。
+- 前置依赖：P2-004、P2-006、P2-007、P3-001、P3-002、P3-003、P3-004、P4-001。
+- 人工决策：成片规格、每镜头候选/预算上限、云端视频使用、发布授权。
+- OpenCode 适配性：适合在所有依赖完成后分多个小 session 实施；不适合单 session 大包施工。
+- 验收标准：主题至 60 秒成片每个中间资产均可追溯/重试/人工批准；重启后无重复扣费/丢镜头；有技术 QC 和成本记录。
+- 必须执行的测试：隔离项目端到端演练、恢复演练、人工内容/许可审查。
+- 交付物：MVP runbook、episode manifest、验收报告、成本与时长实测。
+- Git commit 证据：待完成填写 SHA。
+- 失败恢复方式：停止在最近批准资产，保留 manifest/任务记录；不删除候选或覆盖原始媒体。

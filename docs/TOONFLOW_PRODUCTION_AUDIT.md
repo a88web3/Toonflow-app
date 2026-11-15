@@ -17,8 +17,8 @@
 | 项目 | 结果 |
 | --- | --- |
 | 实际目录 | `VERIFIED`：`/Users/azhong/Toonflow/Toonflow-app` |
-| Git 分支/提交 | `VERIFIED`：`master` / `6086cdffceb704a632eca143dd16cd461a78cdac`（2026-11-05） |
-| 远端 | `VERIFIED`：`origin https://github.com/a88web3/Toonflow-app.git`；未联网比对 GitHub，不能宣称与远端最新一致 |
+| Git 分支/提交 | `VERIFIED`（首轮审查基线）：`master` / `6086cdffceb704a632eca143dd16cd461a78cdac`（2026-11-05） |
+| 远端 | `VERIFIED`：`origin https://github.com/a88web3/Toonflow-app.git`；后续审查文档以独立文档提交/推送 |
 | 工作区状态 | `VERIFIED`：已有用户修改 `packages/mcp/src/stdio.ts`；本审查未读写该文件 |
 | 许可证 | `VERIFIED`：仓库 `LICENSE` 为 MIT（Copyright 2026 HBAI-Ltd） |
 | 运行验证 | `UNVERIFIED`：本次不启动/重启 3000、4096、8000，不发送模型或媒体请求 |
@@ -40,7 +40,7 @@ Bun + Express (`apps/server`，默认 3000)
   ├─ MCP、Agent、A2A、插件安装
   └─ 可选多租户网关（SQLite 或 MySQL：用户、会话、钱包、路由）
        │
-       ├─ 当前 Mac Studio：Qwen OpenAI-compatible API（待运行验收）
+       ├─ 当前 Mac Studio：Qwen OpenAI-compatible API（后续用户确认已接入；稳定性矩阵仍待验收）
        ├─ 云端图片/视频供应商（内置三家适配器）
        └─ 本机 FFmpeg（按需安装）
 
@@ -199,3 +199,9 @@ MIT 仅覆盖 Toonflow 源码；不自动覆盖第三方依赖、模型权重、
 
 `AUDIT_COMPLETE`
 `NOT_READY_FOR_OPENCODE`（当前不具备启动生产功能施工的安全前置条件；P0/P1 基线任务完成并验收后重新判定）
+
+## 13. 第二阶段本地媒体研究增补（2026-11-15）
+
+本轮没有改变首轮审查结论。新增的 [本地媒体可行性研究](LOCAL_AI_MEDIA_FEASIBILITY.md) 确认：Qwen 已由用户确认正常接入；ComfyUI 和 LTX Desktop 有官方 Apple Silicon 路径，LTX 是本地视频首个隔离验收候选；Wan2.2 5B 是第二候选但官方证据仍是 CUDA/NVIDIA；HunyuanVideo 1.5 官方要求 Linux/CUDA，不适合作为当前 Studio 路径。所有 Mac Studio M5 Max 64GB 的生成速度、内存峰值、稳定性和画质均仍为 `UNVERIFIED`，禁止以 NVIDIA 基准替代。
+
+建议保持“Mac mini 编排、Studio 单媒体 job、与 Qwen 错峰、云视频人工批准兜底”的架构。新增计划任务位于唯一施工入口 `ToDo.md`；模型安装/实测前仍不得进入生产施工。
