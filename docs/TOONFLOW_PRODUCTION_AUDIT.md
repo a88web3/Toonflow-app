@@ -8,7 +8,9 @@
 
 结论：**Toonflow 适合作为个人创作工具和半自动工作室的交互底座；不适合在当前状态直接作为商业级批量自动短剧生产系统。**
 
-它已经具备成熟度较高的无限画布、插件节点、工作区文件边界、文本模型供应商设置、图片/视频节点、媒体任务检查点恢复、FFmpeg 基础处理和素材库。它没有短剧领域的规范化项目模型、剧集/镜头资产谱系、服务端工作流编排队列、跨项目调度、可审计的人工审批、成片渲染流水线、质量门禁、成本归集、备份/保留策略或生产可观测性。
+它已经具备成熟度较高的无限画布、插件节点、工作区文件边界、**文档工作区（文件树/搜索/标签页/revision 冲突检测）**、文本模型供应商设置、**统一媒体生成接口（图片/视频/音频三合一）**、媒体任务检查点恢复、FFmpeg 基础处理（**含 concat 与复杂滤镜**）和素材库；并且**已内置三个生产级 Agent skill**（`v118workflow` 分集制作流程、`workflow` 含 SEEDANCE EPISODE DIRECTOR PART A `A0–A12`、`canvas`），它们已经定义了分集目录契约、阶段确认关口、连续性规则、生成留痕与版本快照约定。它没有**服务端强制的**短剧领域模型、剧集/镜头资产谱系、服务端工作流编排队列、跨项目调度、可审计的人工审批状态机、确定性成片渲染流水线、自动质量门禁、**剧集维度**成本归集、备份/保留策略或生产可观测性。
+
+> **口径修订（第三轮对账）**：首轮把「缺领域模型/缺分镜契约/缺审批门」表述为完全缺失，属**低估**。准确表述是：这些能力**以 Agent skill 契约 + 工作区文件/画布 JSON 的形式已存在**，缺的是 schema 校验、服务端状态机、幂等键、租约与跨进程恢复。详见 [架构对账报告](./TOONFLOW_ARCHITECTURE_RECONCILIATION.md) §0、§1.5。
 
 在修复 P0 安全暴露并完成 P1 的基础架构后，建议以“**半自动、人工审核、云端视频为主**”作为首个可运营目标；本地 Mac Studio 保持专注 Qwen 文本/规划，不和高显存视频模型并发争用。批量自动化应在可恢复的持久化编排服务建立后再启动。
 
@@ -69,7 +71,8 @@ Bun + Express (`apps/server`，默认 3000)
 | 配音/TTS | `PARTIAL` | `audioGenerationNode` 抽象支持 text、voice、参考音频；内置适配器实际模型能力须逐家验证 | 没有角色声音库、台词切分、时轴对齐、语音一致性评分 |
 | 字幕/ASR | `PARTIAL` | `packages/asr` 依赖浏览器 SpeechRecognition；其 README 明确可能上传音频到浏览器供应商 | 无离线 ASR、SRT/ASS/VTT 产物、断句/校时/审校流 |
 | 音效/BGM | `PARTIAL` | 可生成/处理音频，FFmpeg 工具可处理媒体 | 无音乐授权库、cue sheet、混音/响度规范/ducking 工作流 |
-| 合成与导出 | `MISSING` | 仅发现剪辑、拆音/抽音、帧提取和通用 FFmpeg 工具；未发现专用 timeline/concat/subtitle render/export pipeline | 无确定性成片 manifest、字幕烧录、转场、母版/发布格式、渲染重试 |
+| 合成与导出 | `PARTIAL`（**由 `MISSING` 修订**） | `packages/ffmpeg/src/browserTypes.ts:21-24` 的 `runMethods` 含 `concat`/`mergeToFile`/`concatenate`，`chainMethods` 含 `complexFilter`/`filterGraph`/`audioFilter`/`videoFilter`；Agent 侧 `ffmpeg`+`ffprobe` 工具已安装（`packages/tools/ffmpeg/src/index.ts:59,68`，`data/tools/ffmpeg.tool.js`），经宿主 worker 执行且**不依赖浏览器**；另有 `videoNode` 截取/抽音轨、`audioNode` 变速裁剪、`frameAnalysisNode` 本地切镜 | 仍缺确定性 render manifest、字幕产物（SRT/ASS/VTT）与烧录、响度/母版规格、可复现 render worker 与渲染重试；本机 FFmpeg 是否含 `libass`/`subtitles` 为 `UNVERIFIED` |
+| 生产 playbook（分集流程/连续性/留痕） | `PARTIAL` | `packages/skills/v118workflow/`（三画布契约 + 阶段关口 + 状态枚举）、`packages/skills/workflow/SKILL.md`（PART A `A0–A12`，含 A0.1 剧情保真锁、A2 源剧情账本、A8 跨段连续性检查、A11 结构校验）、`references/stateAndDelivery.md`（制作状态台账四表 + 确认绑定历史快照）；三者**本机均已安装**（`data/skills/`） | 由模型自觉执行而非服务端强制；存于画布 JSON/Markdown，无 schema 校验、无幂等键、无租约、无跨进程恢复 |
 | 质量检查 | `PARTIAL` | `frameAnalysisNode` 可做镜头切分/AI 分析 | 无自动质量门禁、角色相似度、黑帧/静音/码率/字幕安全区/版权 QC |
 
 ### 中间产物、重试和人工审核
@@ -108,7 +111,11 @@ Bun + Express (`apps/server`，默认 3000)
 
 `VERIFIED`：音频节点能生成/处理；`packages/nodes/audioNode/src/audioProcessing.ts` 支持变速、裁剪并验证输出；`packages/ffmpeg` 封装本地 FFmpeg。`packages/asr/readme.md` 明说浏览器原生识别可能将音频发送到浏览器供应商。
 
-`MISSING`：角色声纹资产、离线/可控 ASR、字幕格式生成、台词时码、混音总线、响度标准、视频合成和导出规格。
+`MISSING`：角色声纹资产、离线/可控 ASR、字幕格式生成、台词时码、混音总线、响度标准、确定性合成 worker 与导出规格。
+
+`PARTIAL`（**修订**：首轮将「视频合成」整体判为 `MISSING`，不准确）：`concat`/`mergeToFile`/`concatenate` 与 `complexFilter`/`filterGraph` 已在 FFmpeg 能力表中，且 `ffmpeg`/`ffprobe` 已作为 Agent 工具安装，可无头调用；缺的是 manifest 驱动的确定性流水线与字幕产物。
+
+音频契约补充（`SOURCE_VERIFIED`）：HTTP 层 `audioGenerationSchema`（`apps/server/src/utils/media/schemas.ts:44-59`）**已支持** `voice`/`speed`/`volume`/`pitch`/`language`/`format`/`sampleRate`，`MediaModel.voices` 亦已定义；`emotion` **仅在** provider 合同 `AudioRequest`（`packages/providers/types.d.ts:175`），不在 HTTP schema；`audioGenerationNode` UI **未暴露** voice 选择器（`src/index.vue:102`）。故多角色音色在 API 层可达，缺节点 UI 与「已安装 provider 是否声明 audio model」的配置事实（`UNVERIFIED`）。
 
 ## 5. 数据、任务与生产记录
 
@@ -118,6 +125,7 @@ Bun + Express (`apps/server`，默认 3000)
 - `VERIFIED`：全局素材库存于 data 目录的 `assets`，支持分页查询；单文件上限 100MB（`apps/server/src/utils/assets/index.ts`）。
 - `VERIFIED`：媒体任务记录是 data 目录下私有 JSON，并保存检查点/结果哈希（`apps/server/src/utils/media/tasks.ts`）。
 - `PARTIAL`：可选多租户 SQLite/MySQL 有用户、会话、钱包、模型路由和 source mapping（`packages/multiTenant/db/*`）。SQLite 由 `bun:sqlite` 打开，MySQL 路径的账本使用 InnoDB 事务。
+- `VERIFIED`（**第三轮补充**）：多租户侧已有**持久计费账本** `multiTenantBillingLedger(requestId PK, userId, currency, kind∈{credit,model}, status∈{reserved,settled,released}, requestHash, reservedMicros, amountMicros, details, usage, createdAt, updatedAt)` 与 `multiTenantWallet(balanceMicros, reservedMicros)`（`packages/multiTenant/db/sqlite.ts:95-118`、`mysql.ts:63-72`）；媒体任务记录携带 `chargeId`/`chargeStatus` 并在成功时按实际秒数结算（`apps/server/src/utils/media/tasks.ts:44-45,271-305,346-349,414-421`）；文本 token 用量解析见 `apps/server/src/utils/ai/billingUsage.ts`。**但个人/单机模式（`modelGateway.enabled()===false`）直接调用 `generateMedia`，不产生任何 charge 记录**（`apps/server/src/agent/tools/index.ts:52-59`），且账本无 series/episode/shot 维度。
 
 ### 生产适配性
 
@@ -205,3 +213,35 @@ MIT 仅覆盖 Toonflow 源码；不自动覆盖第三方依赖、模型权重、
 本轮没有改变首轮审查结论。新增的 [本地媒体可行性研究](LOCAL_AI_MEDIA_FEASIBILITY.md) 确认：Qwen 已由用户确认正常接入；ComfyUI 和 LTX Desktop 有官方 Apple Silicon 路径，LTX 是本地视频首个隔离验收候选；Wan2.2 5B 是第二候选但官方证据仍是 CUDA/NVIDIA；HunyuanVideo 1.5 官方要求 Linux/CUDA，不适合作为当前 Studio 路径。所有 Mac Studio M5 Max 64GB 的生成速度、内存峰值、稳定性和画质均仍为 `UNVERIFIED`，禁止以 NVIDIA 基准替代。
 
 建议保持“Mac mini 编排、Studio 单媒体 job、与 Qwen 错峰、云视频人工批准兜底”的架构。新增计划任务位于唯一施工入口 `ToDo.md`；模型安装/实测前仍不得进入生产施工。
+
+## 14. 第三阶段对账增补（2026-11-15，CodexQ 复核）
+
+本轮以源码与本机运行时安装状态为准，对首轮审查做了定向纠正；首轮的安全结论、P0/P1 优先级与「画布不是生产数据库」判断**继续有效**。完整对账见 [架构对账报告](./TOONFLOW_ARCHITECTURE_RECONCILIATION.md)。
+
+### 14.1 纠正的判断
+
+| 首轮判断 | 修订 | 依据 |
+| --- | --- | --- |
+| 合成与导出 `MISSING`（无 timeline/concat） | 改为 `PARTIAL`：concat/mergeToFile/concatenate/complexFilter 已在能力表且 `ffmpeg`/`ffprobe` 工具已安装、可无头执行 | `packages/ffmpeg/src/browserTypes.ts:3-24`、`packages/tools/ffmpeg/src/index.ts:59,68`、`data/tools/ffmpeg.tool.js` |
+| 无剧本 schema / 无集场镜层级 / 无批准流 | 改为「**契约已存在于 skill，缺服务端强制**」 | `packages/skills/v118workflow/`、`packages/skills/workflow/SKILL.md` PART A `A0–A12`、`references/stateAndDelivery.md`；本机 `data/skills/` 已安装三者 |
+| Agent 输出只能复制 | 改为「Agent 具备工作区 `write`/`edit`/`grep`/`glob`，可直写正式剧本文件」 | `packages/tools/workspace/src/index.ts:13-35`、`apps/server/src/agent/tools/index.ts:73-124` |
+| 成本账本 `MISSING` | 改为 `PARTIAL`：多租户侧已有持久 ledger 与任务级 charge 绑定；缺个人模式记录与剧集维度 | `packages/multiTenant/db/{sqlite,mysql}.ts`、`apps/server/src/utils/media/tasks.ts` |
+| 未提及 `director3dNode` | 补入：文字生成场景/动画/运镜，关键帧导出 PNG、动画导出 MP4；但 `renderVideo` 用浏览器 `MediaRecorder`，**不可无人值守** | `packages/nodes/director3dNode/{readme.md,src/renderMedia.ts:5,22}` |
+| 未提及文档工作区 | 补入：文件树、快速打开、全工作区搜索、标签页/分屏、revision 冲突检测 | `apps/web/src/pages/workspace/panels/document/*` |
+| 未提及站内发布 | 补入：作品（MP4/WebM）+ 封面 + 项目发布至 Toonflow 社区；外部平台发布仍缺失 | `apps/web/src/pages/home/publishWorkDialog.vue`、`apps/server/src/routes/channel/community/*` |
+
+### 14.2 新增的关键架构事实
+
+1. **两条执行路径必须分开设计**：
+   - **画布路径**（现有）：Agent → `canvas` 工具 → `canvasCall` 事件 → 前端执行节点函数。要求画布在浏览器中打开，120s 超时，回传仅在当前 server 进程存活期有效（`apps/server/src/agent/bridge/canvas.ts:10,45`）。适合人工在环的单镜头创作，**不适合无人值守批量**。
+   - **无头路径**（缺一个薄工具）：`context.media` 已注入 `listModels/generateImage/generateVideo/generateAudio`，实现直连服务端 `generateMedia`（`apps/server/src/utils/media/generation.ts:243`，默认落盘 `assets/generated`），**不需要浏览器**；但**当前无任何工具消费它**。新增一个插件工具即可打通批量生产，且**不需要新建媒体 API**。
+2. **并发与资源锁完全缺失**：`utils/ai`、`routes/ai`、`packages/multiTenant` 全文 grep `inflight|concurren|semaphore|rateLimit` 零命中；唯一锁是进程内按路径的 `lockWorkspaceFiles`（`apps/server/src/utils/workspace/files.ts:133`）。因此 P4-001/P4-003 是真实缺口，且是模型互斥切换的前置。
+3. **无法判断其他项目是否在用 Qwen**：其他客户端（OpenCode/codexm/codexg 等）直连 `http://192.168.0.10:8000/v1`，完全绕过 Toonflow；`fetchProviderModels` 只是 30s 超时的存活探测（`apps/server/src/utils/ai/models.ts:12-26`）。Toonflow 只能排空**自己进程内**的 Agent 运行（`sessions.ts:80-101 stopAgentRuns`），且不覆盖直接打 `/api/ai/generate` 的请求。**结论：禁止自动卸载 Qwen，模型切换一律人工审批 + 维护窗口**（详见 [模型资源调度方案](./MODEL_RESOURCE_SCHEDULING.md) §10）。
+4. **本机无生产数据**：`data/workspaces/myTvProject` 为 0 文件、`data/assets/` 为空 → 任何「已跑通端到端」的表述都不成立；所有产能/成本数字当前只能是 `ESTIMATE` 或 `UNVERIFIED`。
+
+### 14.3 对施工入口的影响
+
+`ToDo.md` 的 28 项**本轮未修改**。建议的调整（含 P3-004 前提纠正、P3-002 基线更换、P1-002 输入更换、以及 ADD-001～ADD-008 新增候选）见对账报告 §13，等待用户批准后统一写入。
+
+`AUDIT_RECONCILED`
+`IMPLEMENTATION_NOT_STARTED`

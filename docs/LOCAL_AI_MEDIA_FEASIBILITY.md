@@ -73,7 +73,16 @@
 
 ## 5. Toonflow 最小集成架构
 
-`VERIFIED`：Toonflow 的 `ProviderDefinition` 已定义 `generateImage`、`generateVideo`、`resumeTask`、`saveTaskData`；服务端 `apps/server/src/utils/media/tasks.ts` 持久化 `providerData`，可恢复单个媒体任务。`videoGenerationNode` 可用文字、图片、视频、音频参考输入。
+`VERIFIED`：Toonflow 的 provider 合同已定义 `generateImage`、`generateVideo`、**`generateAudio`**、`processMedia`、`resumeTask`、`saveTaskData`（`packages/providers/types.d.ts:238-266`）；服务端 `apps/server/src/utils/media/tasks.ts` 持久化 `providerData` 与产物哈希，可恢复单个媒体任务。`videoGenerationNode` 可用文字、图片、视频、音频参考输入。
+
+`VERIFIED`（**本轮补充：唯一正确接入通道**）：本地 sidecar 必须实现上述合同，并经**现有自定义 provider 安装通道**注册——`apps/server/src/routes/providers/media/{add,save,validate}.ts` + `apps/server/src/utils/media/provider.ts`。运行时清单由 `utils/media/generation.ts#listMediaModels` 只列出**已安装且已配置**的 provider。**不得新建任何媒体生成 API**：`POST /api/ai/media/generate`（`apps/server/src/routes/ai/media/generate.ts`）已统一承载 image/video/audio 的提交、查询（`tasks/status`）、取消（`tasks/cancel`）与恢复。
+
+`VERIFIED`（**本轮补充：批量生产的真实前置**）：现有两条执行路径必须区分——
+
+1. **画布路径**：Agent 经 `canvas` 工具调用 `node:generateImage` 等，实际由前端执行（`apps/server/src/agent/bridge/canvas.ts:10,45`，120s 超时、要求画布打开、回传仅进程内有效）→ **不可无人值守**。
+2. **无头路径**：`context.media` 已把 `listModels/generateImage/generateVideo/generateAudio` 注入工具上下文（`apps/server/src/agent/tools/index.ts:146-151`；类型 `packages/toolScaffold/src/runtime.ts:140-145`），底层直连服务端 `generateMedia(cwd, ...)`（`utils/media/generation.ts:243`，默认落盘 `assets/generated`），**不需要浏览器**；但**当前无任何工具消费 `context.media`**。
+
+因此在实现 sidecar provider 的同时，必须新增**一个消费 `context.media` 的薄插件工具**（与 `packages/tools/*` 同构），否则批量生产仍会被浏览器绑定。该工具是 `P2-005` 的必要子项，也是 `P4-001` 的前置。
 
 ```text
 Toonflow node / future production DAG
@@ -92,7 +101,9 @@ Mac Studio worker supervisor
 
 适配器必须保存 `jobId`、输入/工作流/模型哈希、产物 URI、状态、可恢复截止时间和错误分类；绝不保存 API key 到任务 checkpoint。进度查询可以映射为 Toonflow 的 `mediaTasks.status`，取消映射为远端 cancel；若 sidecar 不支持 cancel，适配器须显式报告“已请求、未保证终止”。
 
-当前仅支持单个媒体任务的恢复，**不支持**完整短剧批量自动化；后者仍依赖既有 `P4-001` 持久 DAG 队列。
+当前仅支持单个媒体任务的恢复，**不支持**完整短剧批量自动化；后者仍依赖既有 `P4-001` 持久 DAG 队列，并以上述无头工具为前置。
+
+**音频接入补充（`SOURCE_VERIFIED`）**：HTTP 层 `audioGenerationSchema`（`apps/server/src/utils/media/schemas.ts:44-59`）已支持 `voice`、`speed`、`volume`、`pitch`、`language`、`format`、`sampleRate`；模型能力可经 `MediaModel.voices`（`packages/toolScaffold/src/runtime.ts:93`）声明。`emotion` **仅在** provider 合同 `AudioRequest`（`packages/providers/types.d.ts:175`），**不在 HTTP schema**，需经 `other` 透传或后续扩展 schema。`audioGenerationNode` UI **未暴露** voice 选择器（`src/index.vue:102`），故多角色配音目前只能由 Agent/API 直传 `voice`。TTS sidecar 应实现 `generateAudio` 并填 `voices`，**不得占用 `:8000`**。
 
 ## 6. 单集 60 秒 MVP（PROPOSED）
 
@@ -133,4 +144,21 @@ Mac Studio worker supervisor
 
 `RESEARCH_COMPLETE`
 `LOCAL_VIDEO_PRODUCTION_UNVERIFIED`
+`NO_MODEL_OR_INFRASTRUCTURE_CHANGE_PERFORMED`
+
+## 9. 对账修订记录（2026-11-15，CodexQ 复核）
+
+本文件的模型选型、许可证判断与「错峰互斥」结论**继续有效**；本轮只补充接入事实与纠正遗漏。完整对账见 [架构对账报告](./TOONFLOW_ARCHITECTURE_RECONCILIATION.md)。
+
+| 修订项 | 内容 | 依据 |
+| --- | --- | --- |
+| §5 provider 合同 | 补入 `generateAudio` 与 `processMedia`（原文只列 image/video/resume/saveTaskData） | `packages/providers/types.d.ts:238-266` |
+| §5 接入通道 | 明确本地 sidecar **必须**经 `routes/providers/media/{add,save,validate}.ts` 安装为自定义 provider，**不得新建媒体 API** | 同上 + `apps/server/src/routes/ai/media/generate.ts` |
+| §5 批量前置 | 新增「画布路径 vs 无头路径」区分，并把「消费 `context.media` 的薄插件工具」列为 `P2-005` 必要子项、`P4-001` 前置 | `apps/server/src/agent/bridge/canvas.ts:10,45`、`apps/server/src/agent/tools/index.ts:146-151`、`utils/media/generation.ts:243` |
+| 音频接入 | 补入 HTTP schema 已支持 `voice/speed/volume/pitch/language/format/sampleRate`；`emotion` 仅在 provider 合同；节点 UI 无 voice 选择器 | `utils/media/schemas.ts:44-59`、`providers/types.d.ts:25,175`、`audioGenerationNode/src/index.vue:102` |
+| 资源互斥 | 强化为**强制规则**：当前无法判断其他项目是否在用 Qwen（其他客户端直连 `:8000` 绕过 Toonflow，且 Toonflow 无在途计数），故**禁止自动卸载**，一律人工审批 + 维护窗口 | 对账报告 §8.1；`MODEL_RESOURCE_SCHEDULING.md` §10 |
+| 本机现状 | 补入运行时事实：`data/providers/` 仅 3 家云端适配器、无任何本地 provider；`data/workspaces/myTvProject` 为 0 文件、`data/assets/` 为空 → 本机**无端到端跑通证据**，所有性能/成本仍为 `UNVERIFIED` | `data/` 目录盘点（未读取 `settings.json`） |
+| 可复用能力 | 补入此前遗漏的 `director3dNode`（运镜预演、关键帧导出 PNG、动画导出 MP4，但浏览器 `MediaRecorder` 绑定）与 FFmpeg `concat`/`complexFilter` 工具层可达 | `packages/nodes/director3dNode/src/renderMedia.ts:5,22`、`packages/ffmpeg/src/browserTypes.ts:3-24` |
+
+`RECONCILED`
 `NO_MODEL_OR_INFRASTRUCTURE_CHANGE_PERFORMED`
